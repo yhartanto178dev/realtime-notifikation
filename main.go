@@ -42,6 +42,10 @@ func main() {
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+	}))
 
 	e.GET("/ws", handleWebSocket)
 	e.POST("/notifications", createNotification)
@@ -80,6 +84,7 @@ func handleWebSocket(c echo.Context) error {
 			log.Println("Redis pubsub error:", err)
 			break
 		}
+		log.Printf("Received message: Channel=%s, Payload=%s\n", msg.Channel, msg.Payload) // Log perubahan
 		msgCh <- msg
 	}
 	close(msgCh)
