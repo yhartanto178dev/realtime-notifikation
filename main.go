@@ -21,6 +21,7 @@ var (
 
 type Notification struct {
 	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
 	Message   string    `json:"message"`
 	Verified  bool      `json:"verified"`
 	Timestamp time.Time `json:"timestamp"`
@@ -52,6 +53,7 @@ func main() {
 	e.PUT("/notifications/verify/:id", verifyNotification)
 	e.GET("/notifications/unverified", getUnverifiedNotifications)
 	e.GET("/notifications/verified", getVerifiedNotifications)
+	e.GET("/notifications/user/:user_id", getNotificationsByUserID)
 
 	log.Println("Server running on :8080")
 	e.Logger.Fatal(e.Start(":8080"))
@@ -84,7 +86,7 @@ func handleWebSocket(c echo.Context) error {
 			log.Println("Redis pubsub error:", err)
 			break
 		}
-		log.Printf("Received message: Channel=%s, Payload=%s\n", msg.Channel, msg.Payload) // Log perubahan
+		log.Printf("Received message: Channel=%s, Payload=%s\n", msg.Channel, msg.Payload)
 		msgCh <- msg
 	}
 	close(msgCh)
@@ -162,6 +164,33 @@ func getVerifiedNotifications(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, "Error retrieving notifications")
 	}
 	return sendNotifications(c, notifications)
+}
+
+func getNotificationsByUserID(c echo.Context) error {
+	userID := c.Param("user_id")
+
+	unverifiedNotifications, err := rdb.LRange(ctx, "notifications:unverified", 0, -1).Result()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, "Error retrieving notifications")
+	}
+
+	verifiedNotifications, err := rdb.LRange(ctx, "notifications:verified", 0, -1).Result()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, "Error retrieving notifications")
+	}
+
+	var result []Notification
+	for _, n := range append(unverifiedNotifications, verifiedNotifications...) {
+		var notification Notification
+		if err := json.Unmarshal([]byte(n), &notification); err != nil {
+			continue
+		}
+		if notification.UserID == userID {
+			result = append(result, notification)
+		}
+	}
+
+	return c.JSON(http.StatusOK, result)
 }
 
 func sendNotifications(c echo.Context, notifications []string) error {

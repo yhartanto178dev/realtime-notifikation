@@ -1,139 +1,66 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notification System</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-        }
-
-        #unverified-notifications,
-        #verified-notifications {
-            margin-top: 20px;
-        }
-
-        .notification {
-            padding: 10px;
-            border: 1px solid #ccc;
-            margin: 5px;
-        }
-
-        .verified {
-            background-color: #d4edda;
-        }
-
-        .unverified {
-            background-color: #f8d7da;
-        }
-
-        button {
-            margin-left: 10px;
-            cursor: pointer;
-        }
-    </style>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.4/dist/full.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body>
-    <h2>Live Notifications</h2>
-    <button onclick="createNotification()">Create Notification</button>
+<body class="p-4">
+    <div class="navbar bg-base-100 shadow-lg mb-8">
+        <div class="flex-1">
+            <a href="#" class="btn btn-ghost normal-case text-xl">NotifyHub</a>
+        </div>
+        <div class="flex-none">
+            <button class="btn btn-ghost">Logout</button>
+        </div>
+    </div>
 
-    <h3>Unverified Notifications</h3>
-    <div id="unverified-notifications"></div>
+    <div class="max-w-4xl mx-auto">
+        <div class="card bg-base-100 shadow-md mb-6">
+            <div class="card-body">
+                <h2 class="card-title">Create New Notification</h2>
+                <div class="join w-full">
+                    <input type="text" id="create-user-id-input" placeholder="Enter User ID"
+                        class="input input-bordered join-item w-full">
+                    <button onclick="createNotification()" class="btn btn-primary join-item">Create</button>
+                </div>
+            </div>
+        </div>
 
-    <h3>Verified Notifications</h3>
-    <div id="verified-notifications"></div>
+        <div class="grid gap-6 md:grid-cols-2">
+            <div class="card bg-base-100 shadow-md">
+                <div class="card-body">
+                    <h3 class="card-title">Unverified Notifications</h3>
+                    <div id="unverified-notifications" class="space-y-2"></div>
+                </div>
+            </div>
+            <div class="card bg-base-100 shadow-md">
+                <div class="card-body">
+                    <h3 class="card-title">Verified Notifications</h3>
+                    <div id="verified-notifications" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script>
         const ws = new WebSocket("ws://localhost:8080/ws");
-        const unverifiedDiv = document.getElementById("unverified-notifications");
-        const verifiedDiv = document.getElementById("verified-notifications");
-        const displayedNotifications = new Map();
-
         ws.onmessage = function (event) {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.payload) {
-                    const notification = JSON.parse(data.payload);
-                    if (!displayedNotifications.has(notification.id)) {
-                        displayedNotifications.set(notification.id, notification);
-                        displayNotification(notification, data.channel.includes("verified"));
-                    } else if (data.channel.includes("verified")) {
-                        moveNotificationToVerified(notification.id);
-                    }
-                }
-            } catch (error) {
-                console.error("WebSocket message error:", error);
-            }
+            fetchNotifications();
         };
 
-        async function fetchNotifications(url, isVerified) {
-            try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error("Failed to fetch notifications");
-                const notifications = await res.json();
-                notifications.forEach(n => {
-                    if (!displayedNotifications.has(n.id)) {
-                        displayedNotifications.set(n.id, n);
-                        displayNotification(n, isVerified);
-                    }
-                });
-            } catch (error) {
-                console.error("Fetch error:", error);
-            }
-        }
-
-        function displayNotification(notification, isVerified) {
-            try {
-                const div = document.createElement("div");
-                div.classList.add("notification", isVerified ? "verified" : "unverified");
-                div.innerHTML = `<strong>${isVerified ? "Old Notification" : notification.message}</strong> <small>${new Date(notification.timestamp).toLocaleString()}</small>`;
-                div.id = `notif-${notification.id}`;
-
-                if (!isVerified) {
-                    const button = document.createElement("button");
-                    button.textContent = "Verify";
-                    button.onclick = () => verifyNotification(notification.id, div);
-                    div.appendChild(button);
-                    unverifiedDiv.prepend(div);
-                } else {
-                    verifiedDiv.prepend(div);
-                }
-            } catch (error) {
-                console.error("Display error:", error);
-            }
-        }
-
-        function moveNotificationToVerified(id) {
-            const element = document.getElementById(`notif-${id}`);
-            if (element) {
-                element.classList.remove("unverified");
-                element.classList.add("verified");
-                element.querySelector("button")?.remove();
-                element.innerHTML = `<strong>Old Notification</strong> ` + element.innerHTML.split("</strong>")[1];
-                verifiedDiv.prepend(element);
-            }
-        }
-
-        async function verifyNotification(id, element) {
-            try {
-                const res = await fetch(`http://localhost:8080/notifications/verify/${id}`, { method: "PUT" });
-                if (!res.ok) throw new Error("Failed to verify notification");
-                moveNotificationToVerified(id);
-            } catch (error) {
-                console.error("Verification error:", error);
-            }
-        }
-
         async function createNotification() {
+            const userID = document.getElementById("create-user-id-input").value;
+            if (!userID) return alert("Please enter a User ID");
             try {
-                const notification = { message: "New Notification" };
                 const res = await fetch("http://localhost:8080/notifications", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(notification)
+                    body: JSON.stringify({ message: "New Notification", user_id: userID })
                 });
                 if (!res.ok) throw new Error("Failed to create notification");
             } catch (error) {
@@ -141,8 +68,49 @@
             }
         }
 
-        fetchNotifications("http://localhost:8080/notifications/unverified", false);
-        fetchNotifications("http://localhost:8080/notifications/verified", true);
+        async function fetchNotifications() {
+            try {
+                const [unverifiedRes, verifiedRes] = await Promise.all([
+                    fetch("http://localhost:8080/notifications/unverified"),
+                    fetch("http://localhost:8080/notifications/verified")
+                ]);
+                if (!unverifiedRes.ok || !verifiedRes.ok) throw new Error("Failed to fetch notifications");
+                const [unverified, verified] = await Promise.all([unverifiedRes.json(), verifiedRes.json()]);
+                displayNotifications(unverified, false);
+                displayNotifications(verified, true);
+            } catch (error) {
+                console.error("Fetch error:", error);
+            }
+        }
+
+        function displayNotifications(notifications, isVerified) {
+            const container = document.getElementById(isVerified ? "verified-notifications" : "unverified-notifications");
+            container.innerHTML = "";
+            notifications.forEach(notification => {
+                const div = document.createElement("div");
+                div.classList.add("alert", isVerified ? "alert-success" : "alert-error");
+                div.innerHTML = `<strong>${notification.message}</strong> <small>${new Date(notification.timestamp).toLocaleString()}</small>`;
+                if (!isVerified) {
+                    const button = document.createElement("button");
+                    button.textContent = "Verify";
+                    button.classList.add("btn", "btn-sm");
+                    button.onclick = () => verifyNotification(notification.id);
+                    div.appendChild(button);
+                }
+                container.appendChild(div);
+            });
+        }
+
+        async function verifyNotification(id) {
+            try {
+                const res = await fetch(`http://localhost:8080/notifications/verify/${id}`, { method: "PUT" });
+                if (!res.ok) throw new Error("Failed to verify notification");
+            } catch (error) {
+                console.error("Verification error:", error);
+            }
+        }
+
+        fetchNotifications();
     </script>
 </body>
 
