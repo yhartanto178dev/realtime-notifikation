@@ -49,10 +49,68 @@
 
     <script>
         const ws = new WebSocket("ws://localhost:8080/ws");
+        const displayedNotifications = new Map(); // Untuk melacak notifikasi yang sudah ditampilkan
+
+        // WebSocket message handler yang diperbarui
         ws.onmessage = function (event) {
-            fetchNotifications();
+            try {
+                const data = JSON.parse(event.data);
+                if (data.payload) {
+                    const notification = JSON.parse(data.payload);
+
+                    // Jika notifikasi baru, tambahkan ke UI
+                    if (!displayedNotifications.has(notification.id)) {
+                        displayedNotifications.set(notification.id, notification);
+                        addNotificationToUI(notification, data.channel.includes("verified"));
+                    }
+                    // Jika notifikasi diverifikasi, pindahkan ke verified
+                    else if (data.channel.includes("verified")) {
+                        moveNotificationToVerified(notification.id);
+                    }
+                }
+            } catch (error) {
+                console.error("WebSocket message error:", error);
+            }
         };
 
+        // Fungsi untuk menambahkan notifikasi ke UI
+        function addNotificationToUI(notification, isVerified) {
+            const container = document.getElementById(isVerified ? "verified-notifications" : "unverified-notifications");
+
+            const div = document.createElement("div");
+            div.id = `notif-${notification.id}`;
+            div.classList.add("alert", isVerified ? "alert-success" : "alert-error");
+            div.innerHTML = `<strong>${notification.message}</strong> <small>${new Date(notification.timestamp).toLocaleString()}</small>`;
+
+            if (!isVerified) {
+                const button = document.createElement("button");
+                button.textContent = "Verify";
+                button.classList.add("btn", "btn-sm");
+                button.onclick = () => verifyNotification(notification.id);
+                div.appendChild(button);
+            }
+
+            container.prepend(div); // Tambahkan di bagian atas
+        }
+
+        // Fungsi untuk memindahkan notifikasi ke verified
+        function moveNotificationToVerified(id) {
+            const element = document.getElementById(`notif-${id}`);
+            if (element) {
+                // Hapus tombol verify
+                const button = element.querySelector('button');
+                if (button) button.remove();
+
+                // Update styling
+                element.classList.remove('alert-error');
+                element.classList.add('alert-success');
+
+                // Pindahkan ke container verified
+                document.getElementById('verified-notifications').prepend(element);
+            }
+        }
+
+        // Fungsi createNotification yang diperbarui
         async function createNotification() {
             const userID = document.getElementById("create-user-id-input").value;
             if (!userID) return alert("Please enter a User ID");
@@ -63,53 +121,73 @@
                     body: JSON.stringify({ message: "New Notification", user_id: userID })
                 });
                 if (!res.ok) throw new Error("Failed to create notification");
+
+                // Kosongkan input setelah berhasil
+                document.getElementById("create-user-id-input").value = "";
             } catch (error) {
                 console.error("Create notification error:", error);
             }
         }
 
+        // Fungsi verifikasi yang diperbarui
+        async function verifyNotification(id) {
+            try {
+                const res = await fetch(`http://localhost:8080/notifications/verify/${id}`, { method: "PUT" });
+                if (!res.ok) throw new Error("Failed to verify notification");
+
+                // Pindahkan notifikasi secara lokal
+                moveNotificationToVerified(id);
+            } catch (error) {
+                console.error("Verification error:", error);
+            }
+        }
+
+        // Fungsi fetch yang diperbarui
         async function fetchNotifications() {
             try {
                 const [unverifiedRes, verifiedRes] = await Promise.all([
                     fetch("http://localhost:8080/notifications/unverified"),
                     fetch("http://localhost:8080/notifications/verified")
                 ]);
-                if (!unverifiedRes.ok || !verifiedRes.ok) throw new Error("Failed to fetch notifications");
-                const [unverified, verified] = await Promise.all([unverifiedRes.json(), verifiedRes.json()]);
-                displayNotifications(unverified, false);
-                displayNotifications(verified, true);
+
+                // Pastikan respons OK dan data valid
+                if (!unverifiedRes.ok || !verifiedRes.ok) {
+                    throw new Error("Failed to fetch notifications");
+                }
+
+                const [unverified, verified] = await Promise.all([
+                    unverifiedRes.json(),
+                    verifiedRes.json()
+                ]);
+
+                // Pastikan data adalah array sebelum menggunakan forEach
+                if (Array.isArray(unverified)) {
+                    unverified.forEach(n => {
+                        if (!displayedNotifications.has(n.id)) {
+                            displayedNotifications.set(n.id, n);
+                            addNotificationToUI(n, false);
+                        }
+                    });
+                } else {
+                    console.error("Unverified notifications data is not an array:", unverified);
+                }
+
+                if (Array.isArray(verified)) {
+                    verified.forEach(n => {
+                        if (!displayedNotifications.has(n.id)) {
+                            displayedNotifications.set(n.id, n);
+                            addNotificationToUI(n, true);
+                        }
+                    });
+                } else {
+                    console.error("Verified notifications data is not an array:", verified);
+                }
             } catch (error) {
                 console.error("Fetch error:", error);
             }
         }
 
-        function displayNotifications(notifications, isVerified) {
-            const container = document.getElementById(isVerified ? "verified-notifications" : "unverified-notifications");
-            container.innerHTML = "";
-            notifications.forEach(notification => {
-                const div = document.createElement("div");
-                div.classList.add("alert", isVerified ? "alert-success" : "alert-error");
-                div.innerHTML = `<strong>${notification.message}</strong> <small>${new Date(notification.timestamp).toLocaleString()}</small>`;
-                if (!isVerified) {
-                    const button = document.createElement("button");
-                    button.textContent = "Verify";
-                    button.classList.add("btn", "btn-sm");
-                    button.onclick = () => verifyNotification(notification.id);
-                    div.appendChild(button);
-                }
-                container.appendChild(div);
-            });
-        }
-
-        async function verifyNotification(id) {
-            try {
-                const res = await fetch(`http://localhost:8080/notifications/verify/${id}`, { method: "PUT" });
-                if (!res.ok) throw new Error("Failed to verify notification");
-            } catch (error) {
-                console.error("Verification error:", error);
-            }
-        }
-
+        // Panggil fetchNotifications saat halaman dimuat
         fetchNotifications();
     </script>
 </body>
