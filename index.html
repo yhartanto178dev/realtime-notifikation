@@ -10,6 +10,7 @@
 </head>
 
 <body class="p-4">
+    <!-- Navbar -->
     <div class="navbar bg-base-100 shadow-lg mb-8">
         <div class="flex-1">
             <a href="#" class="btn btn-ghost normal-case text-xl">NotifyHub</a>
@@ -17,8 +18,35 @@
         <div class="flex-none">
             <button class="btn btn-ghost">Logout</button>
         </div>
+        <div class="flex-none gap-4">
+            <!-- Notification Icon with Dropdown -->
+            <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-ghost btn-circle">
+                    <div class="indicator">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        <!-- Badge for Unverified Notifications -->
+                        <span id="notification-badge" class="badge badge-xs badge-primary indicator-item">0</span>
+                    </div>
+                </label>
+                <!-- Dropdown Content -->
+                <div tabindex="0" class="mt-3 z-[1] card card-compact dropdown-content w-96 bg-base-100 shadow">
+                    <div class="card-body">
+                        <span class="font-bold text-lg">Notifications</span>
+                        <!-- List of Notifications -->
+                        <div id="notification-dropdown-list" class="space-y-2 max-h-64 overflow-y-auto">
+                            <!-- Notifications will be dynamically added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <!-- Main Content (same as before) -->
     <div class="max-w-4xl mx-auto">
         <div class="card bg-base-100 shadow-md mb-6">
             <div class="card-body">
@@ -62,10 +90,12 @@
                     if (!displayedNotifications.has(notification.id)) {
                         displayedNotifications.set(notification.id, notification);
                         addNotificationToUI(notification, data.channel.includes("verified"));
+                        updateNotificationDropdown();
                     }
                     // Jika notifikasi diverifikasi, pindahkan ke verified
                     else if (data.channel.includes("verified")) {
                         moveNotificationToVerified(notification.id);
+                        updateNotificationDropdown();
                     }
                 }
             } catch (error) {
@@ -80,18 +110,30 @@
             const div = document.createElement("div");
             div.id = `notif-${notification.id}`;
             div.classList.add("alert", isVerified ? "alert-success" : "alert-error");
-            div.innerHTML = `<strong>${notification.message}</strong> <small>${new Date(notification.timestamp).toLocaleString()}</small>`;
 
+            // Tambahkan label "New" atau "Old"
+            const label = isVerified ? "Old Notification" : "New Notification";
+            div.innerHTML = `
+            <strong>${label}</strong>
+            <div>${notification.message}</div>
+            <small>${new Date(notification.timestamp).toLocaleString()}</small>
+        `;
+
+            // Tambahkan tombol verifikasi hanya untuk notifikasi unverified
             if (!isVerified) {
                 const button = document.createElement("button");
                 button.textContent = "Verify";
-                button.classList.add("btn", "btn-sm");
+                button.classList.add("btn", "btn-sm", "btn-primary", "mt-2"); // Tambahkan margin-top
                 button.onclick = () => verifyNotification(notification.id);
                 div.appendChild(button);
             }
 
             container.prepend(div); // Tambahkan di bagian atas
+            updateNotificationBadge();
         }
+
+
+
 
         // Fungsi untuk memindahkan notifikasi ke verified
         function moveNotificationToVerified(id) {
@@ -101,13 +143,45 @@
                 const button = element.querySelector('button');
                 if (button) button.remove();
 
-                // Update styling
+                // Update styling dan konten
                 element.classList.remove('alert-error');
                 element.classList.add('alert-success');
+                element.innerHTML = `
+                <strong>Old Notification</strong>
+                <div>${element.querySelector('div').textContent}</div>
+                <small>${element.querySelector('small').textContent}</small>
+            `;
 
                 // Pindahkan ke container verified
                 document.getElementById('verified-notifications').prepend(element);
+                updateNotificationBadge();
             }
+        }
+
+        // Fungsi untuk memperbarui dropdown notifikasi
+        function updateNotificationDropdown() {
+            const dropdownList = document.getElementById("notification-dropdown-list");
+            dropdownList.innerHTML = ""; // Kosongkan dropdown
+
+            displayedNotifications.forEach(notification => {
+                const div = document.createElement("div");
+                div.classList.add("alert", notification.verified ? "alert-success" : "alert-error");
+
+                // Tambahkan label "New" atau "Old"
+                const label = notification.verified ? "Old Notification" : "New Notification";
+                div.innerHTML = `
+                <strong>${label}</strong>
+                <div>${notification.message}</div>
+                <small>${new Date(notification.timestamp).toLocaleString()}</small>
+            `;
+                dropdownList.appendChild(div);
+            });
+        }
+
+        // Fungsi untuk memperbarui badge notifikasi
+        function updateNotificationBadge() {
+            const unverifiedCount = document.querySelectorAll('#unverified-notifications .alert').length;
+            document.getElementById("notification-badge").textContent = unverifiedCount;
         }
 
         // Fungsi createNotification yang diperbarui
@@ -137,12 +211,12 @@
 
                 // Pindahkan notifikasi secara lokal
                 moveNotificationToVerified(id);
+                updateNotificationDropdown();
             } catch (error) {
                 console.error("Verification error:", error);
             }
         }
 
-        // Fungsi fetch yang diperbarui
         async function fetchNotifications() {
             try {
                 const [unverifiedRes, verifiedRes] = await Promise.all([
@@ -150,17 +224,21 @@
                     fetch("http://localhost:8080/notifications/verified")
                 ]);
 
-                // Pastikan respons OK dan data valid
+                // Pastikan respons OK
                 if (!unverifiedRes.ok || !verifiedRes.ok) {
                     throw new Error("Failed to fetch notifications");
                 }
 
+                // Parse JSON dengan fallback ke array kosong jika data null
                 const [unverified, verified] = await Promise.all([
-                    unverifiedRes.json(),
-                    verifiedRes.json()
+                    unverifiedRes.json().then(data => Array.isArray(data) ? data : []).catch(() => []),
+                    verifiedRes.json().then(data => Array.isArray(data) ? data : []).catch(() => [])
                 ]);
 
-                // Pastikan data adalah array sebelum menggunakan forEach
+                console.log("Unverified notifications:", unverified); // Debugging
+                console.log("Verified notifications:", verified); // Debugging
+
+                // Tampilkan notifikasi unverified
                 if (Array.isArray(unverified)) {
                     unverified.forEach(n => {
                         if (!displayedNotifications.has(n.id)) {
@@ -172,6 +250,7 @@
                     console.error("Unverified notifications data is not an array:", unverified);
                 }
 
+                // Tampilkan notifikasi verified
                 if (Array.isArray(verified)) {
                     verified.forEach(n => {
                         if (!displayedNotifications.has(n.id)) {
@@ -182,6 +261,10 @@
                 } else {
                     console.error("Verified notifications data is not an array:", verified);
                 }
+
+                // Update dropdown dan badge setelah fetch
+                updateNotificationDropdown();
+                updateNotificationBadge();
             } catch (error) {
                 console.error("Fetch error:", error);
             }
