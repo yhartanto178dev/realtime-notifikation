@@ -45,6 +45,19 @@
             </div>
         </div>
     </div>
+    <!-- Modal untuk verifikasi notifikasi -->
+    <dialog id="verify-modal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg">Verify Notification</h3>
+            <div id="modal-notification-content" class="py-4">
+                <!-- Detail notifikasi akan dimuat di sini -->
+            </div>
+            <div class="modal-action">
+                <button id="verify-button" class="btn btn-primary">Verify</button>
+                <button onclick="document.getElementById('verify-modal').close()" class="btn">Close</button>
+            </div>
+        </div>
+    </dialog>
 
     <!-- Main Content (same as before) -->
     <div class="max-w-4xl mx-auto">
@@ -102,7 +115,7 @@
                 console.error("WebSocket message error:", error);
             }
         };
-
+        // Fungsi untuk menambahkan notifikasi ke UI
         // Fungsi untuk menambahkan notifikasi ke UI
         function addNotificationToUI(notification, isVerified) {
             const container = document.getElementById(isVerified ? "verified-notifications" : "unverified-notifications");
@@ -114,25 +127,27 @@
             // Tambahkan label "New" atau "Old"
             const label = isVerified ? "Old Notification" : "New Notification";
             div.innerHTML = `
-            <strong>${label}</strong>
-            <div>${notification.message}</div>
-            <small>${new Date(notification.timestamp).toLocaleString()}</small>
-        `;
+        <strong>${label}</strong>
+        <div>${notification.message}</div>
+        <small>${new Date(notification.timestamp).toLocaleString()}</small>
+    `;
 
             // Tambahkan tombol verifikasi hanya untuk notifikasi unverified
             if (!isVerified) {
                 const button = document.createElement("button");
                 button.textContent = "Verify";
-                button.classList.add("btn", "btn-sm", "btn-primary", "mt-2"); // Tambahkan margin-top
+                button.classList.add("btn", "btn-sm", "btn-primary", "mt-2");
                 button.onclick = () => verifyNotification(notification.id);
                 div.appendChild(button);
             }
 
             container.prepend(div); // Tambahkan di bagian atas
             updateNotificationBadge();
+
+            // Pastikan status verified di displayedNotifications sesuai
+            notification.verified = isVerified;
+            displayedNotifications.set(notification.id, notification);
         }
-
-
 
 
         // Fungsi untuk memindahkan notifikasi ke verified
@@ -147,18 +162,23 @@
                 element.classList.remove('alert-error');
                 element.classList.add('alert-success');
                 element.innerHTML = `
-                <strong>Old Notification</strong>
-                <div>${element.querySelector('div').textContent}</div>
-                <small>${element.querySelector('small').textContent}</small>
-            `;
+            <strong>Old Notification</strong>
+            <div>${element.querySelector('div').textContent}</div>
+            <small>${element.querySelector('small').textContent}</small>
+        `;
 
                 // Pindahkan ke container verified
                 document.getElementById('verified-notifications').prepend(element);
-                updateNotificationBadge();
+
+                // Perbarui status verified di displayedNotifications
+                const notification = displayedNotifications.get(id);
+                if (notification) {
+                    notification.verified = true;
+                    displayedNotifications.set(id, notification);
+                }
             }
         }
 
-        // Fungsi untuk memperbarui dropdown notifikasi
         function updateNotificationDropdown() {
             const dropdownList = document.getElementById("notification-dropdown-list");
             dropdownList.innerHTML = ""; // Kosongkan dropdown
@@ -170,14 +190,20 @@
                 // Tambahkan label "New" atau "Old"
                 const label = notification.verified ? "Old Notification" : "New Notification";
                 div.innerHTML = `
-                <strong>${label}</strong>
-                <div>${notification.message}</div>
-                <small>${new Date(notification.timestamp).toLocaleString()}</small>
-            `;
+            <strong>${label}</strong>
+            <div>${notification.message}</div>
+            <small>${new Date(notification.timestamp).toLocaleString()}</small>
+        `;
+
+                // Tambahkan event listener untuk membuka modal saat notifikasi diklik
+                if (!notification.verified) {
+                    div.style.cursor = "pointer"; // Ubah cursor menjadi pointer
+                    div.addEventListener("click", () => openVerifyModal(notification));
+                }
+
                 dropdownList.appendChild(div);
             });
         }
-
         // Fungsi untuk memperbarui badge notifikasi
         function updateNotificationBadge() {
             const unverifiedCount = document.querySelectorAll('#unverified-notifications .alert').length;
@@ -209,14 +235,16 @@
                 const res = await fetch(`http://localhost:8080/notifications/verify/${id}`, { method: "PUT" });
                 if (!res.ok) throw new Error("Failed to verify notification");
 
-                // Pindahkan notifikasi secara lokal
+                // Pindahkan notifikasi ke verified
                 moveNotificationToVerified(id);
-                updateNotificationDropdown();
+                updateNotificationDropdown(); // Perbarui dropdown
+                updateNotificationBadge(); // Perbarui badge
             } catch (error) {
                 console.error("Verification error:", error);
             }
         }
 
+        // Fungsi fetch data
         async function fetchNotifications() {
             try {
                 const [unverifiedRes, verifiedRes] = await Promise.all([
@@ -269,6 +297,32 @@
                 console.error("Fetch error:", error);
             }
         }
+
+        let currentNotificationId = null; // Simpan ID notifikasi yang sedang diproses
+
+        function openVerifyModal(notification) {
+            const modal = document.getElementById("verify-modal");
+            const modalContent = document.getElementById("modal-notification-content");
+
+            // Tampilkan detail notifikasi di modal
+            modalContent.innerHTML = `
+        <strong>New Notification</strong>
+        <div>${notification.message}</div>
+        <small>${new Date(notification.timestamp).toLocaleString()}</small>
+    `;
+
+            // Simpan ID notifikasi yang sedang diproses
+            currentNotificationId = notification.id;
+
+            // Buka modal
+            modal.showModal();
+        }
+        document.getElementById("verify-button").addEventListener("click", async () => {
+            if (currentNotificationId) {
+                await verifyNotification(currentNotificationId);
+                document.getElementById("verify-modal").close(); // Tutup modal setelah verifikasi
+            }
+        });
 
         // Panggil fetchNotifications saat halaman dimuat
         fetchNotifications();
