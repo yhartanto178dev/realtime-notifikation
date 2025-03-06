@@ -59,7 +59,7 @@
         </div>
     </dialog>
 
-    <!-- Main Content (same as before) -->
+    <!-- Main Content -->
     <div class="max-w-4xl mx-auto">
         <div class="card bg-base-100 shadow-md mb-6">
             <div class="card-body">
@@ -71,104 +71,71 @@
                 </div>
             </div>
         </div>
-
-        <div class="grid gap-6 md:grid-cols-2">
-            <div class="card bg-base-100 shadow-md">
-                <div class="card-body">
-                    <h3 class="card-title">Unverified Notifications</h3>
-                    <div id="unverified-notifications" class="space-y-2"></div>
-                </div>
-            </div>
-            <div class="card bg-base-100 shadow-md">
-                <div class="card-body">
-                    <h3 class="card-title">Verified Notifications</h3>
-                    <div id="verified-notifications" class="space-y-2"></div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script>
         const ws = new WebSocket("ws://localhost:8080/ws");
-        const displayedNotifications = new Map(); // Untuk melacak notifikasi yang sudah ditampilkan
+        const displayedNotifications = new Map();
 
-        // WebSocket message handler yang diperbarui
         ws.onmessage = function (event) {
             try {
                 const data = JSON.parse(event.data);
                 if (data.payload) {
                     const notification = JSON.parse(data.payload);
 
-                    // Jika notifikasi baru, tambahkan ke UI
                     if (!displayedNotifications.has(notification.id)) {
                         displayedNotifications.set(notification.id, notification);
-                        addNotificationToUI(notification, data.channel.includes("verified"));
-                        updateNotificationDropdown();
-                    }
-                    // Jika notifikasi diverifikasi, pindahkan ke verified
-                    else if (data.channel.includes("verified")) {
-                        moveNotificationToVerified(notification.id);
-                        updateNotificationDropdown();
+                        const isVerified = data.channel.includes("verified");
+                        console.log(`Notification ${notification.id} isVerified:`, isVerified); // Tambahkan log
+                        addNotificationToDropdown(notification, isVerified);
+                        updateNotificationBadge();
+                    } else if (data.channel.includes("verified")) {
+                        updateNotificationToVerified(notification.id);
+                        updateNotificationBadge();
                     }
                 }
             } catch (error) {
                 console.error("WebSocket message error:", error);
             }
         };
-        // Fungsi untuk menambahkan notifikasi ke UI
-        // Fungsi untuk menambahkan notifikasi ke UI
-        function addNotificationToUI(notification, isVerified) {
-            const container = document.getElementById(isVerified ? "verified-notifications" : "unverified-notifications");
+
+        // Fungsi untuk menambahkan notifikasi ke dropdown
+        function addNotificationToDropdown(notification, isVerified) {
+            const dropdownList = document.getElementById("notification-dropdown-list");
 
             const div = document.createElement("div");
             div.id = `notif-${notification.id}`;
-            div.classList.add("alert", isVerified ? "alert-success" : "alert-error");
+            div.classList.add("alert", isVerified ? "alert-neutral" : "alert-success");
 
-            // Tambahkan label "New" atau "Old"
             const label = isVerified ? "Old Notification" : "New Notification";
             div.innerHTML = `
-        <strong>${label}</strong>
-        <div>${notification.message}</div>
-        <small>${new Date(notification.timestamp).toLocaleString()}</small>
-    `;
+                <strong>${label}</strong>
+                <div>${notification.message}</div>
+                <small>${new Date(notification.timestamp).toLocaleString()}</small>
+            `;
 
-            // Tambahkan tombol verifikasi hanya untuk notifikasi unverified
             if (!isVerified) {
-                const button = document.createElement("button");
-                button.textContent = "Verify";
-                button.classList.add("btn", "btn-sm", "btn-primary", "mt-2");
-                button.onclick = () => verifyNotification(notification.id);
-                div.appendChild(button);
+                div.style.cursor = "pointer";
+                div.addEventListener("click", () => openVerifyModal(notification));
             }
 
-            container.prepend(div); // Tambahkan di bagian atas
-            updateNotificationBadge();
-
-            // Pastikan status verified di displayedNotifications sesuai
-            notification.verified = isVerified;
-            displayedNotifications.set(notification.id, notification);
+            dropdownList.prepend(div); // Tambahkan di bagian atas dropdown
         }
 
-
-        // Fungsi untuk memindahkan notifikasi ke verified
-        function moveNotificationToVerified(id) {
+        // Fungsi untuk memperbarui notifikasi menjadi verified di dropdown
+        function updateNotificationToVerified(id) {
             const element = document.getElementById(`notif-${id}`);
             if (element) {
-                // Hapus tombol verify
-                const button = element.querySelector('button');
-                if (button) button.remove();
-
-                // Update styling dan konten
-                element.classList.remove('alert-error');
-                element.classList.add('alert-success');
+                element.classList.remove('alert-success');
+                element.classList.add('alert-neutral');
                 element.innerHTML = `
             <strong>Old Notification</strong>
             <div>${element.querySelector('div').textContent}</div>
             <small>${element.querySelector('small').textContent}</small>
         `;
 
-                // Pindahkan ke container verified
-                document.getElementById('verified-notifications').prepend(element);
+                element.style.cursor = "default";
+                element.removeEventListener("click", () => openVerifyModal(notification));
 
                 // Perbarui status verified di displayedNotifications
                 const notification = displayedNotifications.get(id);
@@ -179,34 +146,9 @@
             }
         }
 
-        function updateNotificationDropdown() {
-            const dropdownList = document.getElementById("notification-dropdown-list");
-            dropdownList.innerHTML = ""; // Kosongkan dropdown
-
-            displayedNotifications.forEach(notification => {
-                const div = document.createElement("div");
-                div.classList.add("alert", notification.verified ? "alert-success" : "alert-error");
-
-                // Tambahkan label "New" atau "Old"
-                const label = notification.verified ? "Old Notification" : "New Notification";
-                div.innerHTML = `
-            <strong>${label}</strong>
-            <div>${notification.message}</div>
-            <small>${new Date(notification.timestamp).toLocaleString()}</small>
-        `;
-
-                // Tambahkan event listener untuk membuka modal saat notifikasi diklik
-                if (!notification.verified) {
-                    div.style.cursor = "pointer"; // Ubah cursor menjadi pointer
-                    div.addEventListener("click", () => openVerifyModal(notification));
-                }
-
-                dropdownList.appendChild(div);
-            });
-        }
         // Fungsi untuk memperbarui badge notifikasi
         function updateNotificationBadge() {
-            const unverifiedCount = document.querySelectorAll('#unverified-notifications .alert').length;
+            const unverifiedCount = Array.from(displayedNotifications.values()).filter(n => !n.verified).length;
             document.getElementById("notification-badge").textContent = unverifiedCount;
         }
 
@@ -235,66 +177,11 @@
                 const res = await fetch(`http://localhost:8080/notifications/verify/${id}`, { method: "PUT" });
                 if (!res.ok) throw new Error("Failed to verify notification");
 
-                // Pindahkan notifikasi ke verified
-                moveNotificationToVerified(id);
-                updateNotificationDropdown(); // Perbarui dropdown
+                // Perbarui notifikasi menjadi verified
+                updateNotificationToVerified(id);
                 updateNotificationBadge(); // Perbarui badge
             } catch (error) {
                 console.error("Verification error:", error);
-            }
-        }
-
-        // Fungsi fetch data
-        async function fetchNotifications() {
-            try {
-                const [unverifiedRes, verifiedRes] = await Promise.all([
-                    fetch("http://localhost:8080/notifications/unverified"),
-                    fetch("http://localhost:8080/notifications/verified")
-                ]);
-
-                // Pastikan respons OK
-                if (!unverifiedRes.ok || !verifiedRes.ok) {
-                    throw new Error("Failed to fetch notifications");
-                }
-
-                // Parse JSON dengan fallback ke array kosong jika data null
-                const [unverified, verified] = await Promise.all([
-                    unverifiedRes.json().then(data => Array.isArray(data) ? data : []).catch(() => []),
-                    verifiedRes.json().then(data => Array.isArray(data) ? data : []).catch(() => [])
-                ]);
-
-                console.log("Unverified notifications:", unverified); // Debugging
-                console.log("Verified notifications:", verified); // Debugging
-
-                // Tampilkan notifikasi unverified
-                if (Array.isArray(unverified)) {
-                    unverified.forEach(n => {
-                        if (!displayedNotifications.has(n.id)) {
-                            displayedNotifications.set(n.id, n);
-                            addNotificationToUI(n, false);
-                        }
-                    });
-                } else {
-                    console.error("Unverified notifications data is not an array:", unverified);
-                }
-
-                // Tampilkan notifikasi verified
-                if (Array.isArray(verified)) {
-                    verified.forEach(n => {
-                        if (!displayedNotifications.has(n.id)) {
-                            displayedNotifications.set(n.id, n);
-                            addNotificationToUI(n, true);
-                        }
-                    });
-                } else {
-                    console.error("Verified notifications data is not an array:", verified);
-                }
-
-                // Update dropdown dan badge setelah fetch
-                updateNotificationDropdown();
-                updateNotificationBadge();
-            } catch (error) {
-                console.error("Fetch error:", error);
             }
         }
 
@@ -306,10 +193,10 @@
 
             // Tampilkan detail notifikasi di modal
             modalContent.innerHTML = `
-        <strong>New Notification</strong>
-        <div>${notification.message}</div>
-        <small>${new Date(notification.timestamp).toLocaleString()}</small>
-    `;
+                <strong>New Notification</strong>
+                <div>${notification.message}</div>
+                <small>${new Date(notification.timestamp).toLocaleString()}</small>
+            `;
 
             // Simpan ID notifikasi yang sedang diproses
             currentNotificationId = notification.id;
@@ -317,6 +204,7 @@
             // Buka modal
             modal.showModal();
         }
+
         document.getElementById("verify-button").addEventListener("click", async () => {
             if (currentNotificationId) {
                 await verifyNotification(currentNotificationId);
@@ -326,6 +214,51 @@
 
         // Panggil fetchNotifications saat halaman dimuat
         fetchNotifications();
+
+        // Fungsi fetch data
+        async function fetchNotifications() {
+            try {
+                const [unverifiedRes, verifiedRes] = await Promise.all([
+                    fetch("http://localhost:8080/notifications/unverified"),
+                    fetch("http://localhost:8080/notifications/verified")
+                ]);
+
+                if (!unverifiedRes.ok || !verifiedRes.ok) {
+                    throw new Error("Failed to fetch notifications");
+                }
+
+                const [unverified, verified] = await Promise.all([
+                    unverifiedRes.json().then(data => Array.isArray(data) ? data : []).catch(() => []),
+                    verifiedRes.json().then(data => Array.isArray(data) ? data : []).catch(() => [])
+                ]);
+
+                if (Array.isArray(unverified)) {
+                    unverified.forEach(n => {
+                        if (!displayedNotifications.has(n.id)) {
+                            displayedNotifications.set(n.id, n);
+                            addNotificationToDropdown(n, false);
+                        }
+                    });
+                } else {
+                    console.error("Unverified notifications data is not an array:", unverified);
+                }
+
+                if (Array.isArray(verified)) {
+                    verified.forEach(n => {
+                        if (!displayedNotifications.has(n.id)) {
+                            displayedNotifications.set(n.id, n);
+                            addNotificationToDropdown(n, true);
+                        }
+                    });
+                } else {
+                    console.error("Verified notifications data is not an array:", verified);
+                }
+
+                updateNotificationBadge();
+            } catch (error) {
+                console.error("Fetch error:", error);
+            }
+        }
     </script>
 </body>
 
